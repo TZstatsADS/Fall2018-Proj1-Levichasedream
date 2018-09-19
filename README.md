@@ -12,7 +12,7 @@ Term: Fall 2018
 + Projec title: Lorem ipsum dolor sit amet
 + This project is conducted by [Xin Jin-Uni:xj2215]
 
-+ Project summary: [a short summary] Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
++ Project summary: :People have numerous happiness moments during their lives. In this project, we applied the sentence analysis, topic modeling and sentiments analysis. First, we want to see whether old people tend to talk more when they refer to happiness moments. Second, we want to see whether the age will have the influence on their happiness moments. Third, we would like to see whether the gender would affect people's happiness moments.      
 
 Following [suggestions](http://nicercode.github.io/blog/2013-04-05-projects/) by [RICH FITZJOHN](http://nicercode.github.io/about/#Team) (@richfitz). This folder is orgarnized as follows.
 
