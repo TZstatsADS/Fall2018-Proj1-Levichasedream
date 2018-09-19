@@ -1,0 +1,366 @@
+---
+title: "ads project"
+author: "Xin Jin"
+date: "September 18, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+Step 0 - install all the packages 
+```{r}
+install.packages("DT")
+install.packages("tidyverse")
+install.packages("rvest")
+install.packages("tibble")
+install.packages("qdap")
+install.packages("sentimentr")
+install.packages("gplots")
+install.packages("dplyr")
+install.packages("tm")
+install.packages("syuzhet")
+install.packages("factoextra")
+install.packages("scales")
+install.packages("RColorBrewer")
+install.packages("RANN")
+install.packages("topicmodels")
+install.packages("tidytext")
+install.packages("wordcloud")
+install.packages("ggplot2")
+install.packages("ngram")
+library(DT)
+library(tidyverse)
+library(rvest)
+library(tibble)
+library(qdap)
+library(sentimentr)
+library(gplots)
+library(dplyr)
+library(syuzhet)
+library(factoextra)
+library(scales)
+library(RColorBrewer)
+library(RANN)
+library(tm)
+library(topicmodels)
+library(tidytext)
+library(wordcloud)
+library(ggplot2)
+library(ngram)
+
+```
+
+##Part 1 : Sentence Analysis:\n
+
+
+First part is sentence analysis, I want to analyze whether the age will have a big influence on people's sentence lengths about happiness moments. Therefore, I divide people into seven groups, age 18-27, age 28-37, age 38-47, age 48-57, age 58-67, age 68-77, age 78-87. Then, I want to calculate each mean of seven groups. Finally, I want to compare each mean. 
+```{r}
+#Step 1 - Preparetion, Data loading and cleaning 
+urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/cleaned_hm.csv'
+hm_data <- read_csv(urlfile)
+#clean these data 
+corpus <- VCorpus(VectorSource(hm_data$cleaned_hm))%>%
+  tm_map(content_transformer(tolower))%>%
+  tm_map(removePunctuation)%>%
+  tm_map(removeNumbers)%>%
+  tm_map(removeWords, character(0))%>%
+  tm_map(stripWhitespace)
+stemmed <- tm_map(corpus, stemDocument) %>%
+  tidy() %>%
+  select(text)
+#creating tidy fomrat of the dictionary to be used for completing stems 
+dict <- tidy(corpus) %>%
+  select(text) %>%
+  unnest_tokens(dictionary, text)
+# removing stopp_words that don't hold any significant information for our data set
+data("stop_words")
+
+word <- c("happy","ago","yesterday","lot","today","months","month",
+                 "happier","happiest","last","week","past")
+
+stop_words <- stop_words %>%
+  bind_rows(mutate(tibble(word), lexicon = "updated"))
+#combining stems and dictionary into the same "tidy" object. 
+completed <- stemmed %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(stems, text) %>%
+  bind_cols(dict) %>%
+  anti_join(stop_words, by = c("dictionary" = "word"))
+#we complete the stem by picking the coresponding word with the highest frequency
+completed <- completed %>%
+  group_by(stems) %>%
+  count(dictionary) %>%
+  mutate(word = dictionary[which.max(n)]) %>%
+  ungroup() %>%
+  select(stems, word) %>%
+  distinct() %>%
+  right_join(completed) %>%
+  select(-stems)
+#pasting stem completed individual words into their respective happy moments 
+completed <- completed %>%
+  group_by(id) %>%
+  summarise(text = str_c(word, collapse = " ")) %>%
+  ungroup()
+#keeping a track of the happy moments with their own ID
+hm_data%>%
+  mutate(id=row_number())%>%
+  inner_join(completed)
+hm_data <- hm_data %>%
+  mutate(id = row_number()) %>%
+  inner_join(completed)
+write_csv(hm_data, "../output/processed_moments.csv")
+```
+
+
+```{r}
+
+#Step 2 - Load the processed text data along with demographic inforamtion on contributors, 
+#combine hm_data with demo_data together. 
+urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv'
+demo_data <- read_csv(urlfile)
+
+hm_data <- hm_data %>%
+  inner_join(demo_data, by = "wid") %>%
+  select(wid,
+         original_hm,
+         gender, 
+         marital, 
+         parenthood,
+         reflection_period,
+         age, 
+         country, 
+         ground_truth_category, 
+         text) %>%
+  mutate(count = sapply(hm_data$text, wordcount)) %>%
+  filter(gender %in% c("m", "f")) %>%
+  filter(marital %in% c("single", "married")) %>%
+  filter(parenthood %in% c("n", "y")) %>%
+  filter(reflection_period %in% c("24h", "3m")) %>%
+  mutate(reflection_period = fct_recode(reflection_period, 
+                                        months_3 = "3m", hours_24 = "24h"))
+
+```
+
+
+```{r}
+#Step 3 - according to the hm_data, we create a newage as numeric number, and divide people to seven group by using the age. the calculate the means of these group, and get the barplot for the seven group means. 
+hm_data$newage <- as.numeric(hm_data$age)
+hm_data <- hm_data[is.na(hm_data$newage)!=T,]
+all_mean <- vector(length = 7)
+# get the means of seven age groups 
+for (i in c(1:7)){
+  x <- c(18,28,38,48,58,68,78)
+  y <- c(27, 37, 47, 57, 67, 77, 87)
+  data <- hm_data[hm_data$newage >=x[i] & hm_data$newage <= y[i],]
+  all_mean[i] <- mean(word_count(na.omit(data$original_hm)))
+}
+new_means <- t(as.matrix(all_mean))
+colnames(new_means) <- c("18-27","28-37","38-47","48-57","58-77","68-77","78-87")
+#plot the seven means 
+barplot(new_means, col="skyblue", xlab = "The Age Group", ylab = "The Length of Sentence",
+        main="The Changing of Sentence Length for Different Age Group") 
+```
+####Part 1 Conlusion: 
+\n It seems that people speak same length of sentence about happiness moment from age 18 to age 57, however, when people are getting older and older, specially more than sixty, they are likely to talk more about their happiness moment, also they would like to talk more when they refer something. It quite fits the commone sense which old people like to talk so much. 
+
+
+
+
+
+
+####Part 2 Topic Modeling 
+Next, I want to do the topic modeling, I would like to know that whether the people of different age focus different things about the happiness meoment. Thus, I will divide people into three groups, such as from age 18-30, age 31-65, age 66-90.
+```{r}
+
+
+#Divide people into three group, age 18-30, age 31-65, age 66-90, and make the wordcloud for each 
+for (i in c(1:3)){
+  x <- c(18, 30, 66)
+  y <- c(31, 65, 90)
+  age_group <- hm_data[hm_data$newage >= x[i] & hm_data$newage <= y[i],]
+  word_age_group <- age_group%>%
+    unnest_tokens(word, text)
+  word_count_age_group  <- word_age_group %>%
+    count(word, sort = T)
+  wordcloud(words = word_count_age_group$word, freq = word_count_age_group$n, 
+            min.freq = 10, max.words=50, random.order=F, rot.per=0.35, colors=
+              brewer.pal(8, "Dark2"))
+}
+```
+####Part2 Conclusion:**
+From the three wordclouds, first one is age 18-30, second one is age 31-65, last one is age 65-90. As we can see, from age 18 to age 30, you are in the unversity and just start working, your happiness moments mostly come from friends, and you like to have fun and play. When you are over age 30, you wil start to create a new families, you will have son or daughter, your happiness moment will shift to your families and also have happiness from friends. However, when you are over 65, you retire from compaines, then most happiness moments will come from your partners, such as wife or hushand, also you will get happiness from families. In conclusion, it is obvious that we will get happines from different things when we are at different ages. 
+
+
+###Part 3: Sentiment Analysis \n
+
+This part, I want to whether the gender would affact the people's happines moment. Therefore, I divide people into two groups, male and female. 
+```{r}
+#divide data set into two groups by gender 
+m <- hm_data[hm_data$gender=="m",]
+f <- hm_data[hm_data$gender=="f",]
+m_count <- m %>%
+  unnest_tokens(word,text)%>%
+  count(word, sort=T)
+
+f_count <- f %>%
+  unnest_tokens(word,text)%>%
+  count(word, sort=T)
+#make the two worldclouds 
+wordcloud(words = m_count$word, freq =m_count$n,min.freq = 10, max.words=50, random.order=F, rot.per=0.35, colors=
+              brewer.pal(8, "Dark2"))
+
+wordcloud(words =f_count$word, freq =f_count$n,min.freq = 10, max.words=50, random.order=F, rot.per=0.35, colors=
+              brewer.pal(8, "Dark2"))
+#create the sentiment analysis for male and female. 
+m%>%
+  unnest_tokens(word, text)%>%
+  select(word)%>%
+  inner_join(get_sentiments("nrc"))%>%
+  count(word,sentiment, sort=T)%>%
+  ungroup()%>%
+  group_by(sentiment)%>%
+  top_n(10)%>%
+  ungroup()%>%
+  mutate(word=reorder(word, n))%>%
+  ggplot(aes(word, n, fill=sentiment))+
+  geom_col(show.legend = F)+
+  facet_wrap(~sentiment,scales = "free_y")+
+  labs(y="conttribution", 
+       x=NULL)+
+  coord_flip()
+
+f %>%
+  unnest_tokens(word, text)%>%
+  select(word)%>%
+  inner_join(get_sentiments("nrc"))%>%
+  count(word,sentiment, sort=T)%>%
+  ungroup()%>%
+  group_by(sentiment)%>%
+  top_n(10)%>%
+  ungroup()%>%
+  mutate(word=reorder(word, n))%>%
+  ggplot(aes(word, n, fill=sentiment))+
+  geom_col(show.legend = F)+
+  facet_wrap(~sentiment,scales = "free_y")+
+  labs(y="conttribution", 
+       x=NULL)+
+  coord_flip()
+
+```
+
+###Part 3 Conclusion: 
+from the first two wordclouds, I find that an interest thing behind them. Male is like to get happiness moments from fiends and having fun. However, the female would obtain happiness from their families, such hushand, daughter, son and friends. That's very interesting. Also, from last two sentiment graphs, we can see, for male and felmale, most of their setiment come from same things. However, there is a sight difference between male and female. Female has the more overwhelming emotions when we compare the differences of two pictures. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
